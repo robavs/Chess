@@ -1,3 +1,5 @@
 import { Driections } from "./Directions";
+import { chessBoard, chessPiece } from "./chessPiece";
+import { ListOfAllAvailableSquares } from "./ListOfAllAvailableSquares";
 
-export { Driections }
+export { Driections, chessBoard, chessPiece, ListOfAllAvailableSquares }

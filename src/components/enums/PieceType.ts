@@ -3,7 +3,7 @@ enum PieceType {
     KNIGHT = "knight",
     BISHOP = "bishop",
     ROOK = "rook",
-    QUEEN = "quuen",
+    QUEEN = "queen",
     KING = "king"
 }
 

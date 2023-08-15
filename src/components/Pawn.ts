@@ -2,7 +2,7 @@ import Piece from "./Piece";
 import { Color, PieceType } from "./enums";
 import { Driections } from "./types";
 
-export default class Knight extends Piece {
+export default class Pawn extends Piece {
     #pawnDirections: Driections = [[1, 0], [2, 0], [1, 1], [1, -1]]
     #hasMoved: boolean = false
 

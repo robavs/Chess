@@ -1,0 +1,117 @@
+html {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    background-color: rebeccapurple;
+    color: white
+}
+
+.chess-board {
+    height: 600px;
+    width: 600px;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 0;
+}
+
+.dark {
+    background-color: #779AAF;
+}
+
+.light {
+    background-color: #D9E4E8;
+}
+
+th {
+    outline: 2px solid black;
+    margin: 0;
+    padding: 0;
+    height: 75.09px;
+    width: 60px;
+    /* position: relative; */
+}
+
+img {
+    height: 60px;
+    width: 60px;
+}
+
+.dot {
+    height: 10px;
+    width: 10px;
+    border-radius: 50%;
+    background-color: red;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.pawn-promotion-popup {
+    border: 2px solid black;
+    width: 50%;
+    height: 200px;
+    z-index: 1;
+    position: absolute;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    left: 50%;
+    top: 30%;
+    transform: translate(-50%, -50%);
+    background-color: whitesmoke;
+}
+
+.figure-option {
+    border: 2px solid black;
+    width: 15%;
+    height: 170px;
+    margin: 15px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+}
+
+.figure-option img {
+    width: 100px;
+    height: 100px;
+}
+
+/*pruzet stil sa stack overflow*/
+.btn-close {
+    position: absolute;
+    right: 15px;
+    top: 15px;
+    width: 32px;
+    height: 32px;
+    opacity: 0.3;
+    cursor: pointer;
+}
+
+.btn-close:hover {
+    opacity: 1;
+}
+
+.btn-close:before,
+.btn-close:after {
+    position: absolute;
+    left: 15px;
+    content: ' ';
+    height: 33px;
+    width: 2px;
+    background-color: #333;
+}
+
+.btn-close:before {
+    transform: rotate(45deg);
+}
+
+.btn-close:after {
+    transform: rotate(-45deg);
+}

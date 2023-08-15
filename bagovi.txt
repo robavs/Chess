@@ -1,0 +1,4 @@
+Nece an passant
+
+A trebao bih da optimizujem da mi ovu funkciju findALlAviableSquare trazi samo jednom, a ne 
+na svaki klik!

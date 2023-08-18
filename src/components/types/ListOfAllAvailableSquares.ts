@@ -1,3 +1,1 @@
-export type ListOfAllAvailableSquares = {
-    [key: string]: HTMLTableCellElement[]
-}
+export type ListOfAllAvailableSquares = Record<string, HTMLTableCellElement[]>

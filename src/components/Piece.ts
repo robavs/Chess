@@ -7,11 +7,13 @@ export default class Piece {
     y: number
     directions: Driections
     imageURL: string
+    pieceType: PieceType
 
     constructor(color: Color, x: number, y: number, pieceType: PieceType) {
         this.color = color
         this.x = x
         this.y = y
+        this.pieceType = pieceType
         this.imageURL = `src/assets/${color} ${pieceType}.png`
     }
 

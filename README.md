@@ -1,1 +1,2 @@
-Chess game as project for universtiy course implemented using typescript and rxjs.
+#Chess
+Implementation of a Chess Game as a University Course Project Using TypeScript and RxJS

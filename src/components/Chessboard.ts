@@ -7,11 +7,9 @@ import King from './King'
 import Piece from './Piece'
 import { Color, PieceType } from './enums'
 import { chessPiece, chessBoard, ListOfAllAvailableSquares } from './types'
-import { ISquare, ILastMove, IPromotedPiece } from './interfaces'
-
-import { Observable, BehaviorSubject, fromEvent, combineLatest, of } from 'rxjs';
+import { ILastMove } from './interfaces'
+import { Observable, BehaviorSubject, fromEvent, combineLatest } from 'rxjs';
 import { filter, map, tap } from 'rxjs/operators';
-// null oznacava da je polje trenutno prazno
 
 export default class ChessBoard {
     #boardPosition: chessBoard
@@ -95,12 +93,10 @@ export default class ChessBoard {
         return x >= 0 && y >= 0 && x < 8 && y < 8
     }
 
-
     startGame(): void {
         this.#safeMoves$ = new BehaviorSubject<ListOfAllAvailableSquares>(this.findAvailableSquares(Color.WHITE))
         this.#squares = [...document.querySelectorAll("th")] as HTMLTableCellElement[]
         this.#square$ = fromEvent(this.#squares, "click")
-
 
         this.#whoIsPlaying$.subscribe({
             next: (message: string) => {
@@ -126,7 +122,6 @@ export default class ChessBoard {
             }
         })
 
-        // mislim da mogu da napravim da mi ovaj subject bude redunandan
         this.#isWhiteMove$.subscribe({
             next: (isWhiteMove: boolean) => {
                 this.#playerColor$.next(isWhiteMove ? Color.WHITE : Color.BLACK)
@@ -160,8 +155,8 @@ export default class ChessBoard {
             )
 
         // ovo je secondClick, odnosno klik u kome postavljamo selektovanu figuru na dato mesto
-        const placePiece$: Observable<HTMLTableCellElement> = this.#square$.
-            pipe(
+        const placePiece$: Observable<HTMLTableCellElement> = this.#square$
+            .pipe(
                 map(event => event.currentTarget),
                 filter((square: HTMLTableCellElement) => square.style.outlineColor === "red"),
                 // ovo je bitno jer nam omogucuje da stavimo figuru po drugi put, nakon sto smo "prekinuli supskripciju"
@@ -311,13 +306,16 @@ export default class ChessBoard {
         return !isCheck
     }
 
-    isCheck(checkingNextPosition: boolean = false, colorToCheck: Color): boolean {
+    // funkcija koja proverava da li je playerColor igrac dao sah, kada zelimo da proverimo da li je dati igrac u sahu
+    // moramo da posaljemo boju portivnickog igraca jer nam onda to signalizira da li je drugi igrac dao sah
+
+    isCheck(checkingNextPosition: boolean = false, playerColor: Color): boolean {
 
         // checkingNextPosition nam sluzi samo da ne markiramo polje koje je crveno ukoliko je pozicija koju proveravamo
         // test pozicija da bi utvridli da se ne oktricva sah ti potezom i da je to polje zapravo slobodno
         for (const row of this.#boardPosition) {
             for (const piece of row) {
-                if (!piece || piece.color !== colorToCheck) continue
+                if (!piece || piece.color !== playerColor) continue
 
                 // pesak, kralj i skakac ne mogu da predju vise poteza unapred nego sto im je definisano u koordinatama
                 // a za ostale su dati samo pravci pa 

@@ -202,25 +202,12 @@ export default class ChessBoard {
 
                         const pieceToPlace: Piece = this.#boardPosition[prevSquareX][prevSquareY] as Piece
 
-                        this.#lastMove = { piece: pieceToPlace, xPositionChanged: Math.abs(prevSquareX - nextSquareX) }
-
                         // otvara se dijalog za promovisanje pesaka
                         if (pieceToPlace instanceof Pawn && (nextSquareX === 7 || nextSquareX === 0)) {
                             this.showPawnPromotionDialog(nextSquareX, nextSquareY, prevSquareX, prevSquareY)
                         }
 
-                        // ostaje miprovara za en passant
                         else {
-                            this.#boardPosition[prevSquareX][prevSquareY] = null
-                            this.#boardPosition[nextSquareX][nextSquareY] = pieceToPlace
-
-                            // updejtuju se koordinate nakon pomeranja, mozda i ovo cak moze u neki subject da se stavi
-                            pieceToPlace.x = nextSquareX
-                            pieceToPlace.y = nextSquareY
-
-                            nextSquare.innerHTML = "" // u slucjau da zelimo da pojedemo figuru
-                            nextSquare.appendChild(prevSquare.childNodes[0])
-
                             // znaci da je usledila rokada
                             if (pieceToPlace instanceof King && Math.abs(nextSquareY - prevSquareY) === 2) {
                                 const rook: Rook = this.#boardPosition[nextSquareX][nextSquareY === 6 ? 7 : 0] as Rook
@@ -233,6 +220,30 @@ export default class ChessBoard {
                                 this.#boardElements[rook.x][rook.y].appendChild(this.#boardElements[nextSquareX][rookPrevY].childNodes[0])
                             }
 
+                            // en passant jer ide pesak ukuso i jede
+                            else if (pieceToPlace instanceof Pawn && this.#boardPosition[nextSquareX][nextSquareY] === null && Math.abs(nextSquareY - prevSquareY) === 1) {
+
+                                // koordinate pesaka kojeg jedemo u prolazu
+                                const enPassantPawnX = nextSquareX + (pieceToPlace.color === Color.WHITE ? -1 : 1)
+                                const enPassantPawnY = nextSquareY
+
+                                this.#boardPosition[enPassantPawnX][enPassantPawnY] = null
+                                this.#boardElements[enPassantPawnX][enPassantPawnY].innerHTML = ""
+                            }
+
+                            // azuriranje pozicije
+                            this.#boardPosition[prevSquareX][prevSquareY] = null
+                            this.#boardPosition[nextSquareX][nextSquareY] = pieceToPlace
+
+                            // updejtuju se koordinate nakon pomeranja figure
+                            pieceToPlace.x = nextSquareX
+                            pieceToPlace.y = nextSquareY
+
+                            // azuiranje prikaza nakon sto tu stane figura kojom smo zapoceli kretanje
+                            nextSquare.innerHTML = "" // u slucjau da zelimo da pojedemo figuru
+                            nextSquare.appendChild(prevSquare.childNodes[0])
+
+                            this.#lastMove = { piece: pieceToPlace, xPositionChanged: Math.abs(prevSquareX - nextSquareX) }
                             this.#isWhiteMove$.next(!this.#isWhiteMove$.value)
                             this.#enablePlacingPiece$.next(false)
                         }
@@ -240,6 +251,7 @@ export default class ChessBoard {
                         if (pieceToPlace instanceof King || pieceToPlace instanceof Rook || pieceToPlace instanceof Pawn) {
                             pieceToPlace.hasMoved = true
                         }
+
                     }
                 }
             })
@@ -287,7 +299,6 @@ export default class ChessBoard {
         // ne mozes da stavis figuru na mesto gde se nalazi figura iste boje
         if (newPiece && newPiece.color === oldPiece.color) return false
 
-        // boolean da proveri da li je u toj poziciji sah
         this.#boardPosition[newX][newY] = oldPiece
         this.#boardPosition[prevX][prevY] = null
 
@@ -432,22 +443,38 @@ export default class ChessBoard {
         if (this.canKingCastle(currentPlayerColor, false)) {
             listOfAllAvailableSquares[kingPositionX + "," + kingPositionY].push(this.#boardElements[kingPositionX][2])
         }
-        this.canCaptureEnPassant(currentPlayerColor)
+
+        this.canCaptureEnPassant(currentPlayerColor, listOfAllAvailableSquares)
 
         return listOfAllAvailableSquares
     }
 
-    canCaptureEnPassant(currentPlayerColor: Color) {
+    canCaptureEnPassant(currentPlayerColor: Color, listOfAllAvailableSquares: ListOfAllAvailableSquares): void {
         for (const row of this.#boardPosition) {
             for (const piece of row) {
-                if (!piece || piece.color !== currentPlayerColor || !(piece instanceof Pawn)) continue
+                if (this.#lastMove &&
+                    piece instanceof Pawn &&
+                    this.#lastMove.piece instanceof Pawn &&
+                    piece.color === currentPlayerColor &&
+                    this.#lastMove.piece.color !== piece.color &&
+                    this.#lastMove.xPositionChanged === 2 &&
+                    piece.x === this.#lastMove.piece.x &&
+                    Math.abs(piece.y - this.#lastMove.piece.y) === 1
+                ) {
+                    const newPawnPositionX = piece.x + (piece.color === Color.WHITE ? 1 : -1)
+                    const newPawnPositionY = this.#lastMove.piece.y
 
-                if (!this.#lastMove) continue
+                    this.#boardPosition[this.#lastMove.piece.x][this.#lastMove.piece.y] = null
+                    const isPositionSafeAfterEnPassant = this.isSquareSafe(piece.x, piece.y, newPawnPositionX, newPawnPositionY)
 
-                if (!(this.#lastMove.piece instanceof Pawn) || this.#lastMove.xPositionChanged !== 2) continue
+                    if (isPositionSafeAfterEnPassant) {
+                        if (!listOfAllAvailableSquares[piece.x + "," + piece.y]) {
+                            listOfAllAvailableSquares[piece.x + "," + piece.y] = []
+                        }
+                        listOfAllAvailableSquares[piece.x + "," + piece.y].push(this.#boardElements[newPawnPositionX][newPawnPositionY])
+                    }
 
-                if (piece.y === this.#lastMove.piece.y && piece.color !== this.#lastMove.piece.color) {
-                    console.log("Ima potencijala za en passant", this.#lastMove)
+                    this.#boardPosition[this.#lastMove.piece.x][this.#lastMove.piece.y] = this.#lastMove.piece
                 }
             }
         }
@@ -522,5 +549,3 @@ export default class ChessBoard {
         }
     }
 }
-
-

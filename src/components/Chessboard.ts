@@ -9,22 +9,25 @@ import { Color, PieceType } from './enums'
 import { chessPiece, chessBoard, ListOfAllAvailableSquares } from './types'
 import { ISquare, ILastMove, IPromotedPiece } from './interfaces'
 
-import { Observable, BehaviorSubject, from, fromEvent, combineLatest, zip, forkJoin, of, Subscription } from 'rxjs';
-import { combineLatestAll, filter, map, mergeMap, switchMap, tap, withLatestFrom } from 'rxjs/operators';
+import { Observable, BehaviorSubject, fromEvent, combineLatest, of } from 'rxjs';
+import { filter, map, tap } from 'rxjs/operators';
 // null oznacava da je polje trenutno prazno
 
 export default class ChessBoard {
-    // observable koji prati promene sahovske table
-    #boardState$: BehaviorSubject<chessBoard>
     #boardPosition: chessBoard
-    // mislim da mi je ovaj boardElements potpuno nepotrebna stvar!!!
+    // referenca na sahovska polja
     #boardElements: HTMLTableCellElement[][] = Array(8).fill(0).map(() => Array(8).fill(0))
-    #previousSelectedSquare: ISquare | null = null
-    #currentSelectedSquare: ISquare | null = null
-    #availableSquares: HTMLTableCellElement[] = []
     #isWhiteMove$: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(true)
     #playerColor$: BehaviorSubject<Color> = new BehaviorSubject<Color>(Color.WHITE)
-    #lastMove: ILastMove | null = null
+    #lastMove: ILastMove
+
+    #squares: HTMLTableCellElement[];
+    #square$: Observable<Event>
+
+    #enablePlacingPiece$: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(true)
+    #whoIsPlaying$: BehaviorSubject<string> = new BehaviorSubject<string>("")
+
+    #safeMoves$: BehaviorSubject<ListOfAllAvailableSquares>
 
     // Singleton obrszac jer zelim da imam samo jednu instancu, pa onda moram da stavim da bude zapravo privatni konstruktor
     constructor() {
@@ -50,7 +53,6 @@ export default class ChessBoard {
                 new King(Color.BLACK, 7, 4), new Bishop(Color.BLACK, 7, 5), new Knight(Color.BLACK, 7, 6), new Rook(Color.BLACK, 7, 7)
             ],
         ]
-        this.#boardState$ = new BehaviorSubject<chessBoard>(this.#boardPosition)
         this.createChessBoard()
         this.startGame()
     }
@@ -84,7 +86,6 @@ export default class ChessBoard {
         }
 
         const whoIsPlaying = document.createElement("h2") as HTMLHeadingElement
-        whoIsPlaying.innerText = "White's move"
         whoIsPlaying.classList.add("whoIsPlaying")
         document.body.appendChild(whoIsPlaying)
         document.body.appendChild(chessTable)
@@ -94,17 +95,38 @@ export default class ChessBoard {
         return x >= 0 && y >= 0 && x < 8 && y < 8
     }
 
-    // sada rxjs dolazi do svog izrazaja
 
     startGame(): void {
-        const squares = [...document.querySelectorAll("th")] as HTMLTableCellElement[]
-        const square$: Observable<Event> = fromEvent(squares, "click")
+        this.#safeMoves$ = new BehaviorSubject<ListOfAllAvailableSquares>(this.findAvailableSquares(Color.WHITE))
+        this.#squares = [...document.querySelectorAll("th")] as HTMLTableCellElement[]
+        this.#square$ = fromEvent(this.#squares, "click")
 
-        const enablePlacingPiece$: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(true)
 
-        const safeMoves$: BehaviorSubject<ListOfAllAvailableSquares> = new BehaviorSubject<ListOfAllAvailableSquares>
-            (this.findAvailableSquares(Color.WHITE))
+        this.#whoIsPlaying$.subscribe({
+            next: (message: string) => {
+                (document.querySelector(".whoIsPlaying") as HTMLHeadingElement).innerText = message
+            }
+        })
 
+        this.#safeMoves$.subscribe({
+            next: (boardPostion) => {
+                const oppositePlayerColor = this.#playerColor$.value === Color.WHITE ? Color.BLACK : Color.WHITE
+                const isCheck: boolean = this.isCheck(false, oppositePlayerColor)
+
+                if (!Object.keys(boardPostion).length) {
+                    this.#whoIsPlaying$.next(isCheck ? oppositePlayerColor.toUpperCase() + " win by checkmate" : "Stalemate")
+                    this.#squares.forEach(square => square.style.pointerEvents = "none")
+                }
+                else if (isCheck) {
+                    this.#whoIsPlaying$.next(this.#playerColor$.value.toUpperCase() + " is playing, but is in check")
+                }
+                else {
+                    this.#whoIsPlaying$.next(this.#playerColor$.value.toUpperCase() + " is playing")
+                }
+            }
+        })
+
+        // mislim da mogu da napravim da mi ovaj subject bude redunandan
         this.#isWhiteMove$.subscribe({
             next: (isWhiteMove: boolean) => {
                 this.#playerColor$.next(isWhiteMove ? Color.WHITE : Color.BLACK)
@@ -113,111 +135,149 @@ export default class ChessBoard {
 
         this.#playerColor$.subscribe({
             next: (playerColor: Color) => {
-                // da proverim da li ovo radi ako radi svakako mi se ne svidja ovako nego cu da stavim da je subjekat
-                // pa da emituje vrednost, bukvalno besmisleno ispada da pozivam funkciju a sto posto je lakse preko subjecta
-                safeMoves$.next(this.findAvailableSquares(playerColor))
+                // moram da nadjem neki nacin da ne zovem ovo iz dva poziva
+                this.#squares.forEach(square => {
+                    square.style.background = ""
+                })
+
+                this.#safeMoves$.next(this.findAvailableSquares(playerColor))
+
+                this.#squares.forEach(square => {
+                    square.style.outline = ""
+                })
             }
         })
 
-        // na safeMoves treba da nadovezem specijalne poteze kao sto su rokada i
-        // en passant, tako da cu ovde to da pozovem sa neki contact posle da bi ih spojio
-        // u jedinitven observable
-
-        // takodje treba da postavim da se ovaj safe moves, zapravo menja kako se menja player color
-        // i treba da postavim da mi se this.#pieces postavi u neki state koji se takodje menja
-        // pa da ovi budu u mogucnosti daosluskuju promene
-
         // ovo je firstKlik, odnosno klik kada zelimo da slektujemo figuru
-        const selectPiece$: Observable<HTMLTableCellElement> = square$
+        const selectPiece$: Observable<HTMLTableCellElement> = this.#square$
             .pipe(
                 map(event => event.currentTarget),
                 filter((square: HTMLTableCellElement) => square.childNodes.length > 0),
-                // sad ovde treba da se prosiri logika da se zna kad je prvi klik
-                // kad je drugi klik
-                // kad se jede figura i tako to
                 filter((square: HTMLTableCellElement) => {
                     const piece = square.childNodes[0] as HTMLImageElement
                     return piece.getAttribute("color") === this.#playerColor$.value
                 })
             )
 
-        // a ovo treba da bude klik u kome postavljamo figuru
-        const placePiece$: Observable<HTMLTableCellElement> = square$.
+        // ovo je secondClick, odnosno klik u kome postavljamo selektovanu figuru na dato mesto
+        const placePiece$: Observable<HTMLTableCellElement> = this.#square$.
             pipe(
                 map(event => event.currentTarget),
                 filter((square: HTMLTableCellElement) => square.style.outlineColor === "red"),
                 // ovo je bitno jer nam omogucuje da stavimo figuru po drugi put, nakon sto smo "prekinuli supskripciju"
-                tap(() => enablePlacingPiece$.next(true)),
+                tap(() => this.#enablePlacingPiece$.next(true)),
             )
 
         // prikazi dostupna polja
-        combineLatest([safeMoves$, selectPiece$]).subscribe({
-            next([safeMoves, clickedSquare]) {
-                // dva puta smokliknuli na isto polje, znaci hocu da ponistim klik
-                // medjutim definisem iako kliknem da je square red cisto da bih tako napravio razliku izmedju
-                // dostunih i nedostupnih polja
-                // console.log(safeMoves)
+        combineLatest([this.#safeMoves$, selectPiece$])
+            .subscribe({
+                next: ([safeMoves, clickedSquare]) => {
+                    if (clickedSquare.style.outlineColor === "blue") {
+                        clickedSquare.style.outline = ""
+                        // i za ovo ce mozda moci neki subject da se postavi
+                        this.#squares.forEach(square => square.style.outline = "")
+                    }
+                    else {
+                        this.#squares.forEach(square => square.style.outline = "")
+                        clickedSquare.style.outline = "5px solid blue"
 
-                // Treunutni bag mi je da ne mogu da jedem figure
-
-                if (clickedSquare.style.outlineColor === "blue") {
-                    clickedSquare.style.outline = ""
-                    // i za ovo ce mozda moci neki subject da se postavi
-                    squares.forEach(square => square.style.outline = "")
+                        const squarePositionX: number = Number(clickedSquare.getAttribute("x"))
+                        const squarePositionY: number = Number(clickedSquare.getAttribute("y"))
+                        const key: string = squarePositionX + "," + squarePositionY
+                        const pieceSafeMoves: HTMLTableCellElement[] = safeMoves[key]
+                        pieceSafeMoves?.forEach(square => square.style.outline = "5px solid red")
+                    }
                 }
-                else {
-                    squares.forEach(square => square.style.outline = "")
-                    clickedSquare.style.outline = "5px solid blue"
-
-                    const squarePositionX: number = Number(clickedSquare.getAttribute("x"))
-                    const squarePositionY: number = Number(clickedSquare.getAttribute("y"))
-                    const key: string = squarePositionX + "," + squarePositionY
-                    const dostupnaPoljaZaDatuFiguru = safeMoves[key]
-                    dostupnaPoljaZaDatuFiguru?.forEach(square => square.style.outline = "5px solid red")
-                }
-
-            }
-
-        })
+            })
 
         // postavi figuru na kliknuto polje
         combineLatest([selectPiece$, placePiece$])
             .subscribe({
                 next: ([prevSquare, nextSquare]) => {
-                    if (enablePlacingPiece$.value) {
-                        // kad izvrsim postavljanje figure treba nekako da rimovujem placePiece$
-                        // jer mi ga onda automatski postavim na to polje
-                        nextSquare.appendChild(prevSquare.childNodes[0])
-                        squares.forEach(square => square.style.outline = "")
-                        enablePlacingPiece$.next(false)
+                    if (this.#enablePlacingPiece$.value) {
+                        const prevSquareX: number = Number(prevSquare.getAttribute("x"))
+                        const prevSquareY: number = Number(prevSquare.getAttribute("y"))
+                        const nextSquareX: number = Number(nextSquare.getAttribute("x"))
+                        const nextSquareY: number = Number(nextSquare.getAttribute("y"))
 
-                        const pieceToPlace: Piece = this.#boardPosition[Number(prevSquare.getAttribute("x"))][Number(prevSquare.getAttribute("y"))] as Piece
-                        this.#boardPosition[Number(prevSquare.getAttribute("x"))][Number(prevSquare.getAttribute("y"))] = null
-                        this.#boardPosition[Number(nextSquare.getAttribute("x"))][Number(nextSquare.getAttribute("y"))] = pieceToPlace
+                        const pieceToPlace: Piece = this.#boardPosition[prevSquareX][prevSquareY] as Piece
 
-                        // updejtuju se koordinate nakon pomeranja, mozda i ovo cak moze u neki subject da se stavi
-                        pieceToPlace.x = Number(nextSquare.getAttribute("x"))
-                        pieceToPlace.y = Number(nextSquare.getAttribute("y"))
+                        this.#lastMove = { piece: pieceToPlace, xPositionChanged: Math.abs(prevSquareX - nextSquareX) }
 
-                        console.log(this.#boardPosition)
-                        // mozda ce treba i board state da se ukljuci
-                        this.#boardState$.next(this.#boardPosition)
-                        this.#isWhiteMove$.next(!this.#isWhiteMove$.value)
-                        squares.forEach(square => square.style.outline = "")
-                        console.log("Postavio sam figuru na zadato mesto")
-                        // sad cak mislim da treba da imam neki observable koji ce bukvalno da mi prati ova stanja
-                        // pa ce automatski da azuira stanja
-                    }
-                    else {
+                        // otvara se dijalog za promovisanje pesaka
+                        if (pieceToPlace instanceof Pawn && (nextSquareX === 7 || nextSquareX === 0)) {
+                            this.showPawnPromotionDialog(nextSquareX, nextSquareY, prevSquareX, prevSquareY)
+                        }
 
+                        // ostaje miprovara za en passant
+                        else {
+                            this.#boardPosition[prevSquareX][prevSquareY] = null
+                            this.#boardPosition[nextSquareX][nextSquareY] = pieceToPlace
+
+                            // updejtuju se koordinate nakon pomeranja, mozda i ovo cak moze u neki subject da se stavi
+                            pieceToPlace.x = nextSquareX
+                            pieceToPlace.y = nextSquareY
+
+                            nextSquare.innerHTML = "" // u slucjau da zelimo da pojedemo figuru
+                            nextSquare.appendChild(prevSquare.childNodes[0])
+
+                            // znaci da je usledila rokada
+                            if (pieceToPlace instanceof King && Math.abs(nextSquareY - prevSquareY) === 2) {
+                                const rook: Rook = this.#boardPosition[nextSquareX][nextSquareY === 6 ? 7 : 0] as Rook
+                                const rookPrevY = rook.y
+
+                                // nextSquareY === 6 znaci da je u pitanju king side rokada
+                                rook.y = nextSquareY === 6 ? 5 : 3
+                                this.#boardPosition[rook.x][rook.y] = rook
+                                this.#boardPosition[nextSquareX][rookPrevY] = null
+                                this.#boardElements[rook.x][rook.y].appendChild(this.#boardElements[nextSquareX][rookPrevY].childNodes[0])
+                            }
+
+                            this.#isWhiteMove$.next(!this.#isWhiteMove$.value)
+                            this.#enablePlacingPiece$.next(false)
+                        }
+
+                        if (pieceToPlace instanceof King || pieceToPlace instanceof Rook || pieceToPlace instanceof Pawn) {
+                            pieceToPlace.hasMoved = true
+                        }
                     }
                 }
             })
 
     }
 
+    canKingCastle(kingColor: Color, kingSideCastle: boolean): boolean {
+        const kingPositionX: number = kingColor === Color.WHITE ? 0 : 7
+        const kingPositionY: number = 4
 
+        const rookPositionX: number = kingPositionX
+        const rookPositionY: number = kingSideCastle ? 7 : 0
 
+        const king: chessPiece = this.#boardPosition[kingPositionX][kingPositionY]
+        const rook: chessPiece = this.#boardPosition[rookPositionX][rookPositionY]
+
+        const oppositePlayerColor = kingColor === Color.WHITE ? Color.BLACK : Color.WHITE
+        const isCheck: boolean = this.isCheck(false, oppositePlayerColor)
+
+        if (!(king instanceof King) || king.hasMoved || isCheck) {
+            return false
+        }
+
+        if (!(rook instanceof Rook) || rook.hasMoved) {
+            return false
+        }
+
+        if (this.#boardPosition[kingPositionX][kingPositionY + (kingSideCastle ? 1 : -1)] ||
+            this.#boardPosition[kingPositionX][kingPositionY + (kingSideCastle ? 2 : -2)]) {
+            return false
+        }
+
+        if (!kingSideCastle && this.#boardPosition[kingPositionX][kingPositionY + (kingSideCastle ? 3 : -3)])
+            return false
+
+        return this.isSquareSafe(kingPositionX, kingPositionY, kingPositionX, kingPositionY + (kingSideCastle ? 1 : -1)) &&
+            this.isSquareSafe(kingPositionX, kingPositionY, kingPositionX, kingPositionY + (kingSideCastle ? 2 : -2))
+    }
 
     isSquareSafe(prevX: number, prevY: number, newX: number, newY: number): boolean {
         // proverava da li ce biti u šahu ako se figura stavi na to mesto
@@ -239,7 +299,6 @@ export default class ChessBoard {
 
         return !isCheck
     }
-
 
     isCheck(checkingNextPosition: boolean = false, colorToCheck: Color): boolean {
 
@@ -301,8 +360,6 @@ export default class ChessBoard {
         return false
     }
 
-    // ajde sad ovde da razmislim kako mogu da upotrebim koncepte
-    // rxjs operatora poput take until i tako to uz filtere
     findAvailableSquares(currentPlayerColor: Color): ListOfAllAvailableSquares {
         const listOfAllAvailableSquares: ListOfAllAvailableSquares = {}
 
@@ -364,7 +421,105 @@ export default class ChessBoard {
                 }
             }
         }
+
+        const kingPositionX = currentPlayerColor === Color.WHITE ? 0 : 7
+        const kingPositionY = 4
+
+        if (this.canKingCastle(currentPlayerColor, true)) {
+            listOfAllAvailableSquares[kingPositionX + "," + kingPositionY].push(this.#boardElements[kingPositionX][6])
+        }
+
+        if (this.canKingCastle(currentPlayerColor, false)) {
+            listOfAllAvailableSquares[kingPositionX + "," + kingPositionY].push(this.#boardElements[kingPositionX][2])
+        }
+        this.canCaptureEnPassant(currentPlayerColor)
+
         return listOfAllAvailableSquares
+    }
+
+    canCaptureEnPassant(currentPlayerColor: Color) {
+        for (const row of this.#boardPosition) {
+            for (const piece of row) {
+                if (!piece || piece.color !== currentPlayerColor || !(piece instanceof Pawn)) continue
+
+                if (!this.#lastMove) continue
+
+                if (!(this.#lastMove.piece instanceof Pawn) || this.#lastMove.xPositionChanged !== 2) continue
+
+                if (piece.y === this.#lastMove.piece.y && piece.color !== this.#lastMove.piece.color) {
+                    console.log("Ima potencijala za en passant", this.#lastMove)
+                }
+            }
+        }
+    }
+
+    showPawnPromotionDialog(currentX: number, currentY: number, prevX: number, prevY: number): void {
+        const pieceImages: string[] = ["bishop", "knight", "rook", "queen"]
+        const pawnPromoitionPopUp = document.createElement("div") as HTMLDivElement
+        pawnPromoitionPopUp.classList.add("pawn-promotion-popup")
+        document.body.appendChild(pawnPromoitionPopUp)
+
+        const btnClose = document.createElement("div") as HTMLDivElement
+        btnClose.classList.add("btn-close")
+        pawnPromoitionPopUp.appendChild(btnClose)
+
+        const btnClose$: Observable<Event> = fromEvent(btnClose, "click")
+
+        btnClose$.pipe(
+            tap(() => {
+                pawnPromoitionPopUp.style.display = "none"
+            })
+        ).subscribe()
+
+        for (const pieceImage of pieceImages) {
+            const figureOption = document.createElement("div") as HTMLDivElement
+            figureOption.classList.add("figure-option")
+
+            const figureImage = document.createElement("img") as HTMLImageElement
+            figureImage.src = `src/assets/${this.#playerColor$.value} ${pieceImage}.png`
+            figureImage.alt = this.#playerColor$.value + " " + pieceImage
+
+            figureImage.addEventListener("click", () => {
+                let newPiece: Piece
+                switch (pieceImage) {
+                    case PieceType.QUEEN:
+                        newPiece = new Queen(this.#playerColor$.value, currentX, currentY)
+                        break
+                    case PieceType.ROOK:
+                        newPiece = new Rook(this.#playerColor$.value, currentX, currentY)
+                        break
+                    case PieceType.BISHOP:
+                        newPiece = new Bishop(this.#playerColor$.value, currentX, currentY)
+                        break
+                    case PieceType.KNIGHT:
+                    default:
+                        newPiece = new Knight(this.#playerColor$.value, currentX, currentY)
+                }
+
+                this.#boardPosition[currentX][currentY] = newPiece
+                this.#boardPosition[prevX][prevY] = null
+
+                // moram da napravim novi element slike, jer ako dodam figureImage element on za sebe
+                // ima vezan klik event sto ce da cini da mogu odmah da kliknem novu promovisanu figuru i time da narusim ciklicnost poteza
+
+                const promotedPieceImage = document.createElement("img") as HTMLImageElement
+                promotedPieceImage.src = `src/assets/${this.#playerColor$.value} ${pieceImage}.png`
+                promotedPieceImage.alt = this.#playerColor$.value + " " + pieceImage
+                promotedPieceImage.setAttribute("color", this.#playerColor$.value)
+
+                this.#boardElements[currentX][currentY].innerHTML = ""
+                this.#boardElements[currentX][currentY].appendChild(promotedPieceImage)
+                this.#boardElements[prevX][prevY].innerHTML = ""
+
+                this.#isWhiteMove$.next(!this.#isWhiteMove$.value)
+                this.#enablePlacingPiece$.next(false)
+
+                pawnPromoitionPopUp.style.display = "none"
+            })
+
+            figureOption.appendChild(figureImage)
+            pawnPromoitionPopUp.appendChild(figureOption)
+        }
     }
 }
 

@@ -66,7 +66,7 @@ export default class ChessBoard {
 
             for (let j: number = 0; j < 8; j++) {
                 const square = document.createElement("th") as HTMLTableCellElement
-                square.classList.add(!(i % 2) && !(j % 2) || i % 2 && j % 2 ? "light" : "dark")
+                square.classList.add(!(i % 2) && !(j % 2) || i % 2 && j % 2 ? "dark" : "light")
                 square.setAttribute("x", i.toString())
                 square.setAttribute("y", j.toString())
 

@@ -26,6 +26,7 @@ export default class ChessBoard {
     #whoIsPlaying$: BehaviorSubject<string> = new BehaviorSubject<string>("")
 
     #safeMoves$: BehaviorSubject<ListOfAllAvailableSquares>
+    #closeBtnPawnPromotionDialog$: Observable<Event>
 
     // Singleton obrszac jer zelim da imam samo jednu instancu, pa onda moram da stavim da bude zapravo privatni konstruktor
     constructor() {
@@ -488,11 +489,12 @@ export default class ChessBoard {
         btnClose.classList.add("btn-close")
         pawnPromoitionPopUp.appendChild(btnClose)
 
-        const btnClose$: Observable<Event> = fromEvent(btnClose, "click")
+        this.#closeBtnPawnPromotionDialog$ = fromEvent(btnClose, "click")
 
-        btnClose$.pipe(
+        this.#closeBtnPawnPromotionDialog$.pipe(
             tap(() => {
                 pawnPromoitionPopUp.style.display = "none"
+                this.#enablePlacingPiece$.next(false)
             })
         ).subscribe()
 

@@ -26,7 +26,10 @@ export default class ChessBoard {
     #whoIsPlaying$: BehaviorSubject<string> = new BehaviorSubject<string>("")
 
     #safeMoves$: BehaviorSubject<ListOfAllAvailableSquares>
-    #closeBtnPawnPromotionDialog$: Observable<Event>
+
+    // ukoliko je aktivan sprecice nam klikove na druga polja prilikom izbora figure za promociju
+    #pawnPromotionDialogOpen: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(false)
+    #closeBtnPawnPromotionDialogOpen$: Observable<Event>
 
     // Singleton obrszac jer zelim da imam samo jednu instancu, pa onda moram da stavim da bude zapravo privatni konstruktor
     constructor() {
@@ -99,6 +102,7 @@ export default class ChessBoard {
         this.#squares = [...document.querySelectorAll("th")] as HTMLTableCellElement[]
         this.#square$ = fromEvent(this.#squares, "click")
 
+
         this.#whoIsPlaying$.subscribe({
             next: (message: string) => {
                 (document.querySelector(".whoIsPlaying") as HTMLHeadingElement).innerText = message
@@ -140,6 +144,14 @@ export default class ChessBoard {
 
                 this.#squares.forEach(square => {
                     square.style.outline = ""
+                })
+            }
+        })
+
+        this.#pawnPromotionDialogOpen.subscribe({
+            next: (isOpen: boolean) => {
+                this.#squares.forEach(square => {
+                    square.style.pointerEvents = isOpen ? "none" : "auto"
                 })
             }
         })
@@ -200,7 +212,8 @@ export default class ChessBoard {
 
                         // otvara se dijalog za promovisanje pesaka
                         if (pieceToPlace instanceof Pawn && (nextSquareX === 7 || nextSquareX === 0)) {
-                            this.showPawnPromotionDialog(nextSquareX, nextSquareY, prevSquareX, prevSquareY)
+                            this.#pawnPromotionDialogOpen.next(true)
+                            this.showPawnPromotionDialogOpen(nextSquareX, nextSquareY, prevSquareX, prevSquareY)
                         }
 
                         else {
@@ -242,6 +255,7 @@ export default class ChessBoard {
                             this.#lastMove = { piece: pieceToPlace, xPositionChanged: Math.abs(prevSquareX - nextSquareX) }
                             this.#isWhiteMove$.next(!this.#isWhiteMove$.value)
                             this.#enablePlacingPiece$.next(false)
+                            this.#pawnPromotionDialogOpen.next(false)
                         }
 
                         if (pieceToPlace instanceof King || pieceToPlace instanceof Rook || pieceToPlace instanceof Pawn) {
@@ -479,7 +493,7 @@ export default class ChessBoard {
         }
     }
 
-    showPawnPromotionDialog(currentX: number, currentY: number, prevX: number, prevY: number): void {
+    showPawnPromotionDialogOpen(currentX: number, currentY: number, prevX: number, prevY: number): void {
         const pieceImages: string[] = ["bishop", "knight", "rook", "queen"]
         const pawnPromoitionPopUp = document.createElement("div") as HTMLDivElement
         pawnPromoitionPopUp.classList.add("pawn-promotion-popup")
@@ -489,12 +503,13 @@ export default class ChessBoard {
         btnClose.classList.add("btn-close")
         pawnPromoitionPopUp.appendChild(btnClose)
 
-        this.#closeBtnPawnPromotionDialog$ = fromEvent(btnClose, "click")
+        this.#closeBtnPawnPromotionDialogOpen$ = fromEvent(btnClose, "click")
 
-        this.#closeBtnPawnPromotionDialog$.pipe(
+        this.#closeBtnPawnPromotionDialogOpen$.pipe(
             tap(() => {
                 pawnPromoitionPopUp.style.display = "none"
                 this.#enablePlacingPiece$.next(false)
+                this.#pawnPromotionDialogOpen.next(false)
             })
         ).subscribe()
 
@@ -540,7 +555,7 @@ export default class ChessBoard {
 
                 this.#isWhiteMove$.next(!this.#isWhiteMove$.value)
                 this.#enablePlacingPiece$.next(false)
-
+                this.#pawnPromotionDialogOpen.next(false)
                 pawnPromoitionPopUp.style.display = "none"
             })
 

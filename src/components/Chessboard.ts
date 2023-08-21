@@ -12,15 +12,14 @@ import { Observable, BehaviorSubject, fromEvent, combineLatest } from 'rxjs';
 import { filter, map, tap } from 'rxjs/operators';
 
 export default class ChessBoard {
+    private static instance: ChessBoard
     #boardPosition: chessBoard
     // referenca na sahovska polja
     #boardElements: HTMLTableCellElement[][] = Array(8).fill(0).map(() => Array(8).fill(0))
     #isWhiteMove$: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(true)
     #playerColor$: BehaviorSubject<Color> = new BehaviorSubject<Color>(Color.WHITE)
     #lastMove: ILastMove
-
-    #squares: HTMLTableCellElement[];
-    #square$: Observable<Event>
+    #squares: HTMLTableCellElement[]
 
     #enablePlacingPiece$: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(true)
     #whoIsPlaying$: BehaviorSubject<string> = new BehaviorSubject<string>("")
@@ -29,10 +28,8 @@ export default class ChessBoard {
 
     // ukoliko je aktivan sprecice nam klikove na druga polja prilikom izbora figure za promociju
     #pawnPromotionDialogOpen: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(false)
-    #closeBtnPawnPromotionDialogOpen$: Observable<Event>
 
-    // Singleton obrszac jer zelim da imam samo jednu instancu, pa onda moram da stavim da bude zapravo privatni konstruktor
-    constructor() {
+    private constructor() {
         this.#boardPosition = [
             [
                 new Rook(Color.WHITE, 0, 0), new Knight(Color.WHITE, 0, 1), new Bishop(Color.WHITE, 0, 2), new Queen(Color.WHITE, 0, 3),
@@ -56,7 +53,13 @@ export default class ChessBoard {
             ],
         ]
         this.createChessBoard()
-        this.startGame()
+    }
+
+    public static getInstsance(): ChessBoard {
+        if (!ChessBoard.instance) {
+            ChessBoard.instance = new ChessBoard()
+        }
+        return ChessBoard.instance
     }
 
     createChessBoard(): void {
@@ -100,8 +103,7 @@ export default class ChessBoard {
     startGame(): void {
         this.#safeMoves$ = new BehaviorSubject<ListOfAllAvailableSquares>(this.findAvailableSquares(Color.WHITE))
         this.#squares = [...document.querySelectorAll("th")] as HTMLTableCellElement[]
-        this.#square$ = fromEvent(this.#squares, "click")
-
+        const square$: Observable<Event> = fromEvent(this.#squares, "click")
 
         this.#whoIsPlaying$.subscribe({
             next: (message: string) => {
@@ -110,11 +112,11 @@ export default class ChessBoard {
         })
 
         this.#safeMoves$.subscribe({
-            next: (boardPostion) => {
-                const oppositePlayerColor = this.#playerColor$.value === Color.WHITE ? Color.BLACK : Color.WHITE
+            next: (safeMoves: ListOfAllAvailableSquares) => {
+                const oppositePlayerColor: Color = this.#playerColor$.value === Color.WHITE ? Color.BLACK : Color.WHITE
                 const isCheck: boolean = this.isCheck(false, oppositePlayerColor)
 
-                if (!Object.keys(boardPostion).length) {
+                if (!Object.keys(safeMoves).length) {
                     this.#whoIsPlaying$.next(isCheck ? oppositePlayerColor.toUpperCase() + " win by checkmate" : "Stalemate")
                     this.#squares.forEach(square => square.style.pointerEvents = "none")
                 }
@@ -157,7 +159,7 @@ export default class ChessBoard {
         })
 
         // ovo je firstKlik, odnosno klik kada zelimo da slektujemo figuru
-        const selectPiece$: Observable<HTMLTableCellElement> = this.#square$
+        const selectPiece$: Observable<HTMLTableCellElement> = square$
             .pipe(
                 map(event => event.currentTarget),
                 filter((square: HTMLTableCellElement) => square.childNodes.length > 0),
@@ -168,7 +170,7 @@ export default class ChessBoard {
             )
 
         // ovo je secondClick, odnosno klik u kome postavljamo selektovanu figuru na dato mesto
-        const placePiece$: Observable<HTMLTableCellElement> = this.#square$
+        const placePiece$: Observable<HTMLTableCellElement> = square$
             .pipe(
                 map(event => event.currentTarget),
                 filter((square: HTMLTableCellElement) => square.style.outlineColor === "red"),
@@ -179,7 +181,7 @@ export default class ChessBoard {
         // prikazi dostupna polja
         combineLatest([this.#safeMoves$, selectPiece$])
             .subscribe({
-                next: ([safeMoves, clickedSquare]) => {
+                next: ([safeMoves, clickedSquare]: [ListOfAllAvailableSquares, HTMLTableCellElement]) => {
                     if (clickedSquare.style.outlineColor === "blue") {
                         clickedSquare.style.outline = ""
                         // i za ovo ce mozda moci neki subject da se postavi
@@ -220,7 +222,7 @@ export default class ChessBoard {
                             // znaci da je usledila rokada
                             if (pieceToPlace instanceof King && Math.abs(nextSquareY - prevSquareY) === 2) {
                                 const rook: Rook = this.#boardPosition[nextSquareX][nextSquareY === 6 ? 7 : 0] as Rook
-                                const rookPrevY = rook.y
+                                const rookPrevY: number = rook.y
 
                                 // nextSquareY === 6 znaci da je u pitanju king side rokada
                                 rook.y = nextSquareY === 6 ? 5 : 3
@@ -233,8 +235,8 @@ export default class ChessBoard {
                             else if (pieceToPlace instanceof Pawn && this.#boardPosition[nextSquareX][nextSquareY] === null && Math.abs(nextSquareY - prevSquareY) === 1) {
 
                                 // koordinate pesaka kojeg jedemo u prolazu
-                                const enPassantPawnX = nextSquareX + (pieceToPlace.color === Color.WHITE ? -1 : 1)
-                                const enPassantPawnY = nextSquareY
+                                const enPassantPawnX: number = nextSquareX + (pieceToPlace.color === Color.WHITE ? -1 : 1)
+                                const enPassantPawnY: number = nextSquareY
 
                                 this.#boardPosition[enPassantPawnX][enPassantPawnY] = null
                                 this.#boardElements[enPassantPawnX][enPassantPawnY].innerHTML = ""
@@ -255,7 +257,6 @@ export default class ChessBoard {
                             this.#lastMove = { piece: pieceToPlace, xPositionChanged: Math.abs(prevSquareX - nextSquareX) }
                             this.#isWhiteMove$.next(!this.#isWhiteMove$.value)
                             this.#enablePlacingPiece$.next(false)
-                            this.#pawnPromotionDialogOpen.next(false)
                         }
 
                         if (pieceToPlace instanceof King || pieceToPlace instanceof Rook || pieceToPlace instanceof Pawn) {
@@ -278,7 +279,7 @@ export default class ChessBoard {
         const king: chessPiece = this.#boardPosition[kingPositionX][kingPositionY]
         const rook: chessPiece = this.#boardPosition[rookPositionX][rookPositionY]
 
-        const oppositePlayerColor = kingColor === Color.WHITE ? Color.BLACK : Color.WHITE
+        const oppositePlayerColor: Color = kingColor === Color.WHITE ? Color.BLACK : Color.WHITE
         const isCheck: boolean = this.isCheck(false, oppositePlayerColor)
 
         if (!(king instanceof King) || king.hasMoved || isCheck) {
@@ -313,7 +314,7 @@ export default class ChessBoard {
         this.#boardPosition[prevX][prevY] = null
 
         // vrsimo proveru da igrac ne sme da bude u sahu nakon svog sledeceg poteza, tj ne sme da otkrije sah
-        const oppositeColorPlayer = this.#playerColor$.value === Color.WHITE ? Color.BLACK : Color.WHITE
+        const oppositeColorPlayer: Color = this.#playerColor$.value === Color.WHITE ? Color.BLACK : Color.WHITE
         const isCheck: boolean = this.isCheck(true, oppositeColorPlayer)
         this.#boardPosition[prevX][prevY] = oldPiece
         this.#boardPosition[newX][newY] = newPiece
@@ -324,7 +325,7 @@ export default class ChessBoard {
     // funkcija koja proverava da li je playerColor igrac dao sah, kada zelimo da proverimo da li je dati igrac u sahu
     // moramo da posaljemo boju portivnickog igraca jer nam onda to signalizira da li je drugi igrac dao sah
 
-    isCheck(checkingNextPosition: boolean = false, playerColor: Color): boolean {
+    isCheck(checkingNextPosition: boolean, playerColor: Color): boolean {
 
         // checkingNextPosition nam sluzi samo da ne markiramo polje koje je crveno ukoliko je pozicija koju proveravamo
         // test pozicija da bi utvridli da se ne oktricva sah ti potezom i da je to polje zapravo slobodno
@@ -336,8 +337,8 @@ export default class ChessBoard {
                 // a za ostale su dati samo pravci pa 
                 if (piece instanceof Pawn || piece instanceof King || piece instanceof Knight) {
                     for (const [dx, dy] of piece.directions) {
-                        const newX = piece.x + dx
-                        const newY = piece.y + dy
+                        const newX: number = piece.x + dx
+                        const newY: number = piece.y + dy
 
                         if (piece instanceof Pawn && dy === 0) continue // zato sto pesak ne napada upravno vec ukoso
 
@@ -446,8 +447,8 @@ export default class ChessBoard {
             }
         }
 
-        const kingPositionX = currentPlayerColor === Color.WHITE ? 0 : 7
-        const kingPositionY = 4
+        const kingPositionX: number = currentPlayerColor === Color.WHITE ? 0 : 7
+        const kingPositionY: number = 4
 
         if (this.canKingCastle(currentPlayerColor, true)) {
             listOfAllAvailableSquares[kingPositionX + "," + kingPositionY].push(this.#boardElements[kingPositionX][6])
@@ -474,11 +475,12 @@ export default class ChessBoard {
                     piece.x === this.#lastMove.piece.x &&
                     Math.abs(piece.y - this.#lastMove.piece.y) === 1
                 ) {
-                    const newPawnPositionX = piece.x + (piece.color === Color.WHITE ? 1 : -1)
-                    const newPawnPositionY = this.#lastMove.piece.y
+                    const newPawnPositionX: number = piece.x + (piece.color === Color.WHITE ? 1 : -1)
+                    const newPawnPositionY: number = this.#lastMove.piece.y
 
                     this.#boardPosition[this.#lastMove.piece.x][this.#lastMove.piece.y] = null
-                    const isPositionSafeAfterEnPassant = this.isSquareSafe(piece.x, piece.y, newPawnPositionX, newPawnPositionY)
+                    const isPositionSafeAfterEnPassant: boolean = this.isSquareSafe(piece.x, piece.y, newPawnPositionX, newPawnPositionY)
+                    this.#boardPosition[this.#lastMove.piece.x][this.#lastMove.piece.y] = this.#lastMove.piece
 
                     if (isPositionSafeAfterEnPassant) {
                         if (!listOfAllAvailableSquares[piece.x + "," + piece.y]) {
@@ -486,8 +488,6 @@ export default class ChessBoard {
                         }
                         listOfAllAvailableSquares[piece.x + "," + piece.y].push(this.#boardElements[newPawnPositionX][newPawnPositionY])
                     }
-
-                    this.#boardPosition[this.#lastMove.piece.x][this.#lastMove.piece.y] = this.#lastMove.piece
                 }
             }
         }
@@ -503,9 +503,9 @@ export default class ChessBoard {
         btnClose.classList.add("btn-close")
         pawnPromoitionPopUp.appendChild(btnClose)
 
-        this.#closeBtnPawnPromotionDialogOpen$ = fromEvent(btnClose, "click")
+        const closeBtnPawnPromotionDialogOpen$: Observable<Event> = fromEvent(btnClose, "click")
 
-        this.#closeBtnPawnPromotionDialogOpen$.pipe(
+        closeBtnPawnPromotionDialogOpen$.pipe(
             tap(() => {
                 pawnPromoitionPopUp.style.display = "none"
                 this.#enablePlacingPiece$.next(false)

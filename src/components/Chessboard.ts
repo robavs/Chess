@@ -27,7 +27,7 @@ export default class ChessBoard {
     #safeMoves$: BehaviorSubject<ListOfAllAvailableSquares>
 
     // ukoliko je aktivan sprecice nam klikove na druga polja prilikom izbora figure za promociju
-    #pawnPromotionDialogOpen: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(false)
+    #isPawnPromotionDialogOpen: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(false)
 
     private constructor() {
         this.#boardPosition = [
@@ -150,7 +150,7 @@ export default class ChessBoard {
             }
         })
 
-        this.#pawnPromotionDialogOpen.subscribe({
+        this.#isPawnPromotionDialogOpen.subscribe({
             next: (isOpen: boolean) => {
                 this.#squares.forEach(square => {
                     square.style.pointerEvents = isOpen ? "none" : "auto"
@@ -214,8 +214,8 @@ export default class ChessBoard {
 
                         // otvara se dijalog za promovisanje pesaka
                         if (pieceToPlace instanceof Pawn && (nextSquareX === 7 || nextSquareX === 0)) {
-                            this.#pawnPromotionDialogOpen.next(true)
-                            this.showPawnPromotionDialogOpen(nextSquareX, nextSquareY, prevSquareX, prevSquareY)
+                            this.#isPawnPromotionDialogOpen.next(true)
+                            this.showPawnPromotionDialog(nextSquareX, nextSquareY, prevSquareX, prevSquareY)
                         }
 
                         else {
@@ -493,7 +493,7 @@ export default class ChessBoard {
         }
     }
 
-    showPawnPromotionDialogOpen(currentX: number, currentY: number, prevX: number, prevY: number): void {
+    showPawnPromotionDialog(currentX: number, currentY: number, prevX: number, prevY: number): void {
         const pieceImages: string[] = ["bishop", "knight", "rook", "queen"]
         const pawnPromoitionPopUp = document.createElement("div") as HTMLDivElement
         pawnPromoitionPopUp.classList.add("pawn-promotion-popup")
@@ -503,13 +503,13 @@ export default class ChessBoard {
         btnClose.classList.add("btn-close")
         pawnPromoitionPopUp.appendChild(btnClose)
 
-        const closeBtnPawnPromotionDialogOpen$: Observable<Event> = fromEvent(btnClose, "click")
+        const closeBtnIsPawnPromotionDialogOpen$: Observable<Event> = fromEvent(btnClose, "click")
 
-        closeBtnPawnPromotionDialogOpen$.pipe(
+        closeBtnIsPawnPromotionDialogOpen$.pipe(
             tap(() => {
                 pawnPromoitionPopUp.style.display = "none"
                 this.#enablePlacingPiece$.next(false)
-                this.#pawnPromotionDialogOpen.next(false)
+                this.#isPawnPromotionDialogOpen.next(false)
             })
         ).subscribe()
 
@@ -555,7 +555,7 @@ export default class ChessBoard {
 
                 this.#isWhiteMove$.next(!this.#isWhiteMove$.value)
                 this.#enablePlacingPiece$.next(false)
-                this.#pawnPromotionDialogOpen.next(false)
+                this.#isPawnPromotionDialogOpen.next(false)
                 pawnPromoitionPopUp.style.display = "none"
             })
 
